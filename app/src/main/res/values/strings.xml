@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">GeoAlarm</string>
+    <string name="action_ClearDatabase">Clear Database</string>
+    <string name="action_test">Test Activity</string>
+    <string name="title_activity_maps">Map</string>
+</resources>
