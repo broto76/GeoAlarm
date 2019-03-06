@@ -9,14 +9,11 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.Build;
 import android.support.annotation.NonNull;
-import android.support.design.widget.Snackbar;
-import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -38,9 +35,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private String TAG = "MapActivity";
     private final int locationRequestCode = 1;
-    private final float defaultZoom = 17;
-    private final int defaultRadius = 100;
-    private final int seekMultipler = 10;
 
     private Button setAlarmButton;
     private Button stopAlarmButton;
@@ -55,7 +49,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private PendingIntent alarmIntent;
     private BroadcastReceiver alarmReceiver;
-    private final String ALARM_INTENT = "com.broto.geoalarm.ALARM_TRIGGERED";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -104,7 +97,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         radiusBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
-                radius = i*seekMultipler;
+                radius = i*Constants.seekMultipler;
                 mMap.clear();
                 MapAddMarker(target,"Target",false);
                 MapAddCircle(radius);
@@ -145,7 +138,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             @Override
             public void onStatusChanged(String s, int i, Bundle bundle) {
-                radius = i*seekMultipler;
+
             }
 
             @Override
@@ -183,7 +176,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         //Setup initial Map Marker
         LatLng home = new LatLng(22.4696, 88.3631);
         target = home;
-        radius = defaultRadius;
+        radius = Constants.defaultRadius;
         //TODO:HardCoded String and Location
         MapAddMarker(target,"Bansdroni",true);
         MapAddCircle(radius);
@@ -193,7 +186,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onMapLongClick(LatLng latLng) {
                 target = latLng;
-                radius = defaultRadius;
+                radius = Constants.defaultRadius;
 
                 mMap.clear();
 
@@ -214,11 +207,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             }
         };
         registerReceiver(alarmReceiver,
-                new IntentFilter(ALARM_INTENT));
+                new IntentFilter(Constants.ALARM_INTENT));
     }
 
     private void setUpPendingIntent(){
-        Intent intent = new Intent(ALARM_INTENT);
+        Intent intent = new Intent(Constants.ALARM_INTENT);
         alarmIntent = PendingIntent.getBroadcast(MapsActivity.this,0,
                 intent,PendingIntent.FLAG_CANCEL_CURRENT);
         Log.i(TAG,"setUpPendingIntent()");
@@ -226,10 +219,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private void setUpSeekBar(int radius){
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.N){
-            radiusBar.setProgress(radius/seekMultipler,true);
+            radiusBar.setProgress(radius/Constants.seekMultipler,true);
         }
         else{
-            radiusBar.setProgress(radius/seekMultipler);
+            radiusBar.setProgress(radius/Constants.seekMultipler);
         }
     }
 
@@ -243,7 +236,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             if(zoom_flag){
                 CameraPosition position = new CameraPosition.Builder()
                         .target(latLng)
-                        .zoom(defaultZoom)
+                        .zoom(Constants.defaultZoom)
                         .build();
                 mMap.animateCamera(CameraUpdateFactory.newCameraPosition(position));
             }
