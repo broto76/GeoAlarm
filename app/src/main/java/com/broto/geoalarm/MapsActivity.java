@@ -2,7 +2,6 @@ package com.broto.geoalarm;
 
 import android.Manifest;
 import android.app.AlertDialog;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -11,7 +10,6 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
-import android.location.LocationManager;
 import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.v4.app.FragmentActivity;
@@ -42,12 +40,11 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private GoogleMap mMap;
     private LocationListener locationListener;
-    private LocationManager locationManager;
+    private LocationController mLocationController;
 
     private LatLng target;
     private int radius;
 
-    private PendingIntent alarmIntent;
     private BroadcastReceiver alarmReceiver;
 
     @Override
@@ -71,9 +68,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         setAlarmButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                registerLiveLocation();
+
                 Log.i(TAG,"Set Alarm Button");
-                setAlarm();
+
+                mLocationController.registerLiveLocationUpdate(locationListener);
+
+                mLocationController.setAlarm(target,radius);
 
                 setAlarmButton.setEnabled(false);
                 radiusBar.setEnabled(false);
@@ -84,9 +84,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         stopAlarmButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                unregisterLiveLocation();
+
                 Log.i(TAG,"Stop Alarm Button");
-                stopAlarm();
+
+                mLocationController.unregisterLiveLocationUpdate(locationListener);
+
+                mLocationController.stopAlarm();
 
                 stopAlarmButton.setEnabled(false);
                 radiusBar.setEnabled(true);
@@ -113,9 +116,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             }
         });
-
-        locationManager = (LocationManager) getApplicationContext()
-                .getSystemService(Context.LOCATION_SERVICE);
 
         locationListener = new LocationListener() {
             @Override
@@ -155,6 +155,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         setUpAlarmReceiver();
     }
 
+    @Override
+    protected void onResume() {
+        Log.i(TAG,"onResume()");
+        mLocationController = LocationController.getInstance(getApplicationContext());
+        super.onResume();
+    }
 
     /**
      * Manipulates the map once available.
@@ -198,6 +204,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
     private void setUpAlarmReceiver() {
+        Log.i(TAG,"setUpAlarmReceiver()");
         alarmReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -210,14 +217,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 new IntentFilter(Constants.ALARM_INTENT));
     }
 
-    private void setUpPendingIntent(){
-        Intent intent = new Intent(Constants.ALARM_INTENT);
-        alarmIntent = PendingIntent.getBroadcast(MapsActivity.this,0,
-                intent,PendingIntent.FLAG_CANCEL_CURRENT);
-        Log.i(TAG,"setUpPendingIntent()");
-    }
-
     private void setUpSeekBar(int radius){
+        Log.i(TAG,"setUpSeekBar()");
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.N){
             radiusBar.setProgress(radius/Constants.seekMultipler,true);
         }
@@ -266,80 +267,25 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-    private void setAlarm(){
-        Log.i(TAG,"setAlarm");
-        if(alarmIntent == null)
-            setUpPendingIntent();
-        else{
-            Toast.makeText(this, "Disable current alarm to proceed",
-                    Toast.LENGTH_SHORT).show();
-            return;
-        }
-        if(checkPermission()) {
-            if (checkLocationEnabled()){
-                locationManager.addProximityAlert(target.latitude, target.longitude, radius, -1,
-                        alarmIntent);
-                Log.i(TAG,"Alarm added");
-            } else {
-                Toast.makeText(this, "Enable Location Service",
-                        Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    private void stopAlarm(){
-        Log.i(TAG,"stopAlarm");
-        if(alarmIntent!=null){
-            locationManager.removeProximityAlert(alarmIntent);
-            alarmIntent = null;
-        }
-    }
-
-    private void registerLiveLocation() {
-        if (checkPermission()) {
-            Log.i(TAG,"Location Permission Available");
-            if(checkLocationEnabled()) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER,
-                        0, 0, locationListener);
-                Log.i(TAG,"Successfully Registered");
-            }
-            else{
-                Toast.makeText(this, "Please Enable Location Service",
-                        Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    private void unregisterLiveLocation() {
-        locationManager.removeUpdates(locationListener);
-        Log.i(TAG,"Successfully Unregistered");
-        mMap.clear();
-        MapAddMarker(target,"Target",false);
-        MapAddCircle(radius);
-        Log.i(TAG,"Live Location Marker Removed");
-    }
-
-    private boolean checkLocationEnabled() {
-        boolean result = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
-        Log.i(TAG,"GPS Enabled = " + result);
-        return result;
-    }
-
     @Override
     protected void onDestroy() {
+        Log.i(TAG,"onDestroy()");
+        if(mLocationController != null){
+            mLocationController.stopAlarm();
+            mLocationController.unregisterLiveLocationUpdate(locationListener);
+        }
         super.onDestroy();
     }
 
     @Override
     public void onBackPressed() {
-        if(locationManager!=null){
-            unregisterLiveLocation();
-        }
+        Log.i(TAG,"onBackPressed()");
         Toast.makeText(this, "Exiting", Toast.LENGTH_SHORT).show();
         super.onBackPressed();
     }
 
     private boolean checkPermission(){
+        Log.i(TAG,"checkPermission()");
         if(checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)==
                 PackageManager.PERMISSION_GRANTED) {
             return true;
