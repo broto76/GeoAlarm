@@ -46,113 +46,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private int radius;
 
     private BroadcastReceiver alarmReceiver;
+    private AlarmReceiver mAlarmReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Log.i(TAG,"onCreate()");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
 
-        setAlarmButton = findViewById(R.id.SetAlarm);
-        stopAlarmButton = findViewById(R.id.StopAlarm);
-        radiusBar = findViewById(R.id.radiusBar);
-
-        setAlarmButton.setEnabled(false);
-        stopAlarmButton.setEnabled(false);
-        radiusBar.setEnabled(false);
-
-        setAlarmButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-
-                Log.i(TAG,"Set Alarm Button");
-
-                mLocationController.registerLiveLocationUpdate(locationListener);
-
-                mLocationController.setAlarm(target,radius);
-
-                setAlarmButton.setEnabled(false);
-                radiusBar.setEnabled(false);
-                stopAlarmButton.setEnabled(true);
-            }
-        });
-
-        stopAlarmButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-
-                Log.i(TAG,"Stop Alarm Button");
-
-                mLocationController.unregisterLiveLocationUpdate(locationListener);
-
-                mLocationController.stopAlarm();
-
-                stopAlarmButton.setEnabled(false);
-                radiusBar.setEnabled(true);
-                setAlarmButton.setEnabled(true);
-            }
-        });
-
-        radiusBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
-                radius = i*Constants.seekMultipler;
-                mMap.clear();
-                MapAddMarker(target,"Target",false);
-                MapAddCircle(radius);
-            }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-
-            }
-        });
-
-        locationListener = new LocationListener() {
-            @Override
-            public void onLocationChanged(Location location) {
-
-                mMap.clear();
-
-                MapAddMarker(target,"Target",false);
-                MapAddCircle(radius);
-                setUpSeekBar(radius);
-
-                MapAddMarker(new LatLng(location.getLatitude(),location.getLongitude()),
-                        "Live",false);
-
-                Log.i(TAG, "Location Updated. " +
-                        location.getLatitude() + " " +
-                        location.getLongitude()
-                );
-            }
-
-            @Override
-            public void onStatusChanged(String s, int i, Bundle bundle) {
-
-            }
-
-            @Override
-            public void onProviderEnabled(String s) {
-
-            }
-
-            @Override
-            public void onProviderDisabled(String s) {
-
-            }
-        };
-
         setUpAlarmReceiver();
+        initializeUI();
+
+        initLocationListener();
     }
 
     @Override
@@ -186,7 +96,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         //TODO:HardCoded String and Location
         MapAddMarker(target,"Bansdroni",true);
         MapAddCircle(radius);
-        setUpSeekBar(radius);
+        setSeekBar(radius);
 
         mMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
             @Override
@@ -198,27 +108,152 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
                 MapAddMarker(target,"Target",false);
                 MapAddCircle(radius);
-                setUpSeekBar(radius);
+                setSeekBar(radius);
             }
         });
     }
 
-    private void setUpAlarmReceiver() {
-        Log.i(TAG,"setUpAlarmReceiver()");
-        alarmReceiver = new BroadcastReceiver() {
+    private void initializeUI(){
+
+        Log.i(TAG,"initializeUI()");
+
+        setAlarmButton = findViewById(R.id.SetAlarm);
+        stopAlarmButton = findViewById(R.id.StopAlarm);
+        radiusBar = findViewById(R.id.radiusBar);
+
+        setAlarmButton.setEnabled(false);
+        stopAlarmButton.setEnabled(false);
+        radiusBar.setEnabled(false);
+
+        setAlarmButton.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onReceive(Context context, Intent intent) {
-                Log.i(TAG,"Entered Location");
-                stopAlarmButton.performClick();
-                Toast.makeText(context, "Alarm", Toast.LENGTH_SHORT).show();
+            public void onClick(View view) {
+
+                Log.i(TAG,"Set Alarm Button");
+
+                mLocationController.registerLiveLocationUpdate(locationListener);
+
+                registerReceiver(mAlarmReceiver,new IntentFilter(Constants.ALARM_INTENT));
+
+                mLocationController.setAlarm(target,radius);
+
+                setAlarmButton.setEnabled(false);
+                radiusBar.setEnabled(false);
+                stopAlarmButton.setEnabled(true);
             }
-        };
-        registerReceiver(alarmReceiver,
-                new IntentFilter(Constants.ALARM_INTENT));
+        });
+
+        stopAlarmButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+
+                Log.i(TAG,"Stop Alarm Button");
+
+                mLocationController.unregisterLiveLocationUpdate(locationListener);
+
+                try{
+                    unregisterReceiver(mAlarmReceiver);
+                } catch(Exception e){
+                    Log.e(TAG,"Alarm Receiver already unregistered");
+                    e.printStackTrace();
+                }
+
+                mLocationController.stopAlarm();
+
+                stopAlarmButton.setEnabled(false);
+                radiusBar.setEnabled(true);
+                setAlarmButton.setEnabled(true);
+            }
+        });
+
+        radiusBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+                radius = i*Constants.seekMultipler;
+                mMap.clear();
+                MapAddMarker(target,"Target",false);
+                MapAddCircle(radius);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
     }
 
-    private void setUpSeekBar(int radius){
-        Log.i(TAG,"setUpSeekBar()");
+    private void initLocationListener(){
+
+        Log.i(TAG,"initLocationListener()");
+
+        locationListener = new LocationListener() {
+            @Override
+            public void onLocationChanged(Location location) {
+
+                mMap.clear();
+
+                MapAddMarker(target,"Target",false);
+                MapAddCircle(radius);
+                setSeekBar(radius);
+
+                MapAddMarker(new LatLng(location.getLatitude(),location.getLongitude()),
+                        "Live",false);
+
+                Log.i(TAG, "Location Updated. " +
+                        location.getLatitude() + " " +
+                        location.getLongitude()
+                );
+            }
+
+            @Override
+            public void onStatusChanged(String s, int i, Bundle bundle) {
+
+            }
+
+            @Override
+            public void onProviderEnabled(String s) {
+
+            }
+
+            @Override
+            public void onProviderDisabled(String s) {
+
+            }
+        };
+    }
+
+    private void setUpAlarmReceiver() {
+        Log.i(TAG,"setUpAlarmReceiver()");
+        mAlarmReceiver = new AlarmReceiver();
+        mAlarmReceiver.registerAlarmTriggerCallback(new IAlarmCallback() {
+            @Override
+            public void onAlarmTrigger() {
+                Log.i(TAG,"onAlarmTrigger Callback");
+                //TODO:: Improve the Logic
+                mLocationController.unregisterLiveLocationUpdate(locationListener);
+                mLocationController.stopAlarm();
+                try {
+                    unregisterReceiver(mAlarmReceiver);
+                } catch (Exception e) {
+                    Log.e(TAG,"Alarm Receiver Already Unregistered");
+                    e.printStackTrace();
+                }
+
+                //Update HMI State
+                stopAlarmButton.setEnabled(false);
+                radiusBar.setEnabled(true);
+                setAlarmButton.setEnabled(true);
+            }
+        });
+    }
+
+    private void setSeekBar(int radius){
+        Log.i(TAG,"setUpSeekBar() radius: " + radius);
         if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.N){
             radiusBar.setProgress(radius/Constants.seekMultipler,true);
         }

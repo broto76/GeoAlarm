@@ -19,12 +19,15 @@ public class LocationController{
     private static LocationManager mLocationManager;
     private PendingIntent mPendingIntent;
 
+    private LocationController(){
+        mLocationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);
+    }
+
     public static LocationController getInstance(Context context){
         Log.i(TAG,"LocationController::getInstance");
+        mContext = context;
         if(mInstance == null)
             mInstance = new LocationController();
-        mContext = context;
-        mLocationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);
         return mInstance;
     }
 
