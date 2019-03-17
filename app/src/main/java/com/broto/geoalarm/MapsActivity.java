@@ -11,6 +11,7 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.os.Build;
+import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
@@ -39,20 +40,22 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     private SeekBar radiusBar;
 
     private GoogleMap mMap;
+    private GoogleMap.OnMapLongClickListener mMapLongClickListener;
     private LocationListener locationListener;
     private LocationController mLocationController;
+    private AlarmReceiver mAlarmReceiver;
+    private MapHelper mMapHelper;
 
     private LatLng target;
     private int radius;
-
-    private BroadcastReceiver alarmReceiver;
-    private AlarmReceiver mAlarmReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Log.i(TAG,"onCreate()");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+
+        mMap  = null;
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
@@ -63,6 +66,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         initializeUI();
 
         initLocationListener();
+        initMapLongClickListener();
     }
 
     @Override
@@ -70,6 +74,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         Log.i(TAG,"onResume()");
         mLocationController = LocationController.getInstance(getApplicationContext());
         super.onResume();
+        if(mMap != null){
+            mMapHelper.enableTargetAdd(mMapLongClickListener);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        Log.i(TAG,"onPause()");
+        if(mMap != null) {
+            mMapHelper.disableTargetAdd();
+        }
+        super.onPause();
     }
 
     /**
@@ -83,34 +99,21 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
      */
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        Log.i(TAG + ":onMapReady", "GoogleMap Ready.");
+        Log.i(TAG, "GoogleMap Ready.");
         mMap = googleMap;
 
         setAlarmButton.setEnabled(true);
         radiusBar.setEnabled(true);
 
-        //Setup initial Map Marker
-        LatLng home = new LatLng(22.4696, 88.3631);
-        target = home;
+        mMapHelper = MapHelper.getInstance(mMap);
+
+        target = new LatLng(22.4696, 88.3631);
         radius = Constants.defaultRadius;
-        //TODO:HardCoded String and Location
-        MapAddMarker(target,"Bansdroni",true);
-        MapAddCircle(radius);
+
+        mMapHelper.initMapUI();
         setSeekBar(radius);
 
-        mMap.setOnMapLongClickListener(new GoogleMap.OnMapLongClickListener() {
-            @Override
-            public void onMapLongClick(LatLng latLng) {
-                target = latLng;
-                radius = Constants.defaultRadius;
-
-                mMap.clear();
-
-                MapAddMarker(target,"Target",false);
-                MapAddCircle(radius);
-                setSeekBar(radius);
-            }
-        });
+        mMapHelper.enableTargetAdd(mMapLongClickListener);
     }
 
     private void initializeUI(){
@@ -131,11 +134,42 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
                 Log.i(TAG,"Set Alarm Button");
 
-                mLocationController.registerLiveLocationUpdate(locationListener);
+                int result = mLocationController.registerLiveLocationUpdate(locationListener);
+                switch(result){
+                    case Constants.LOCATION_PERMISSION_UNAVAILABLE:
+                        checkPermission();
+                        return;
+                    case Constants.LOCATION_PROVIDER_DISABLED:
+                        enableLocationProvider();
+                        return;
+                    case Constants.LOCATION_ENABLED:
+                        break;
+                    default:
+                        Log.e(TAG,"Unexpected registerLiveLocationUpdate result: " + result);
+                        return;
+                }
 
                 registerReceiver(mAlarmReceiver,new IntentFilter(Constants.ALARM_INTENT));
 
-                mLocationController.setAlarm(target,radius);
+                result = mLocationController.setAlarm(target,radius);
+                switch(result){
+                    case Constants.LOCATION_PERMISSION_UNAVAILABLE:
+                        checkPermission();
+                        return;
+                    case Constants.LOCATION_PROVIDER_DISABLED:
+                        enableLocationProvider();
+                        return;
+                    case Constants.LOATION_ALARM_ALREADY_ENABLED:
+                        handleCurrentAlarm();
+                        return;
+                    case Constants.LOCATION_ALARM_SUCCESS:
+                        break;
+                    default:
+                        Log.e(TAG,"Unexpected setAlarm result: " + result);
+                        return;
+                }
+
+                mMapHelper.disableTargetAdd();
 
                 setAlarmButton.setEnabled(false);
                 radiusBar.setEnabled(false);
@@ -150,6 +184,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 Log.i(TAG,"Stop Alarm Button");
 
                 mLocationController.unregisterLiveLocationUpdate(locationListener);
+                mMapHelper.removeLiveMarker();
+                mMapHelper.enableTargetAdd(mMapLongClickListener);
 
                 try{
                     unregisterReceiver(mAlarmReceiver);
@@ -170,9 +206,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
                 radius = i*Constants.seekMultipler;
-                mMap.clear();
-                MapAddMarker(target,"Target",false);
-                MapAddCircle(radius);
+                mMapHelper.updateTarget(target,radius);
             }
 
             @Override
@@ -187,6 +221,19 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         });
     }
 
+    private void initMapLongClickListener(){
+        mMapLongClickListener = new GoogleMap.OnMapLongClickListener() {
+            @Override
+            public void onMapLongClick(LatLng latLng) {
+                target = latLng;
+                radius = Constants.defaultRadius;
+
+                mMapHelper.updateTarget(target,radius);
+                setSeekBar(radius);
+            }
+        };
+    }
+
     private void initLocationListener(){
 
         Log.i(TAG,"initLocationListener()");
@@ -195,19 +242,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             @Override
             public void onLocationChanged(Location location) {
 
-                mMap.clear();
-
-                MapAddMarker(target,"Target",false);
-                MapAddCircle(radius);
-                setSeekBar(radius);
-
-                MapAddMarker(new LatLng(location.getLatitude(),location.getLongitude()),
-                        "Live",false);
-
                 Log.i(TAG, "Location Updated. " +
                         location.getLatitude() + " " +
                         location.getLongitude()
                 );
+
+                mMapHelper.updateLiveLocation(
+                        new LatLng(location.getLatitude(),location.getLongitude()));
             }
 
             @Override
@@ -236,6 +277,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 Log.i(TAG,"onAlarmTrigger Callback");
                 //TODO:: Improve the Logic
                 mLocationController.unregisterLiveLocationUpdate(locationListener);
+                mMapHelper.removeLiveMarker();
+                mMapHelper.enableTargetAdd(mMapLongClickListener);
                 mLocationController.stopAlarm();
                 try {
                     unregisterReceiver(mAlarmReceiver);
@@ -262,46 +305,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
     }
 
-    private void MapAddMarker(LatLng latLng,String title,boolean zoom_flag){
-        try{
-            // Add a marker in Bansdroni and move the camera
-            mMap.addMarker(new MarkerOptions().position(latLng).title(title));
-
-            //Configure CameraPosition
-            //Zoom change based on flag
-            if(zoom_flag){
-                CameraPosition position = new CameraPosition.Builder()
-                        .target(latLng)
-                        .zoom(Constants.defaultZoom)
-                        .build();
-                mMap.animateCamera(CameraUpdateFactory.newCameraPosition(position));
-            }
-            Log.i(TAG+":MapAddMarker","Map marker sucessfully set at Lat:"+latLng.latitude+
-                    " Long:"+latLng.longitude+" Title:"+title);
-        }
-        catch (Exception e){
-            Log.e(TAG+":MapAddMarker","Error setting marker at Lat:"+latLng.latitude+
-                    " Long:"+latLng.longitude+" Title:"+title);
-            e.printStackTrace();
-        }
-    }
-
-    private void MapAddCircle(int rad){
-        try{
-            mMap.addCircle(new CircleOptions()
-                    .center(target)
-                    .radius(rad)
-                    .strokeWidth(0f)
-                    .fillColor(0x55c5e26d)
-            );
-            Log.i(TAG+":MapAddCircle","Set up radius, val="+rad);
-        }
-        catch (Exception e){
-            Log.e(TAG+":MapAddCircle","Error setting up radius, val="+rad);
-            e.printStackTrace();
-        }
-    }
-
     @Override
     protected void onDestroy() {
         Log.i(TAG,"onDestroy()");
@@ -317,6 +320,16 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         Log.i(TAG,"onBackPressed()");
         Toast.makeText(this, "Exiting", Toast.LENGTH_SHORT).show();
         super.onBackPressed();
+    }
+
+    private void enableLocationProvider(){
+        Log.i(TAG,"enableLocationProvider()");
+        startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+    }
+
+    private void handleCurrentAlarm() {
+        Log.i(TAG,"handleCurrentAlarm");
+        //TODO:: Complete implementation
     }
 
     private boolean checkPermission(){
